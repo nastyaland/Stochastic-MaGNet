@@ -4,14 +4,14 @@ from torch import nn
 
 
 class SelfAttention2D_Block_N(nn.Module):
-    def __init__(self, N, T, F, T_dim, D, dropout=0.3, device='cuda'):
+    def __init__(self, N, T, F, T_dim, D, dropout=0.3):
         super(SelfAttention2D_Block_N, self).__init__()
-        self.Wq = nn.Parameter(torch.randn(T_dim, F, D, device=device).unsqueeze(0).expand(N, -1, -1, -1).reshape(-1, F, D), requires_grad=True)
-        self.Wk = nn.Parameter(torch.randn(T_dim, F, D, device=device).unsqueeze(0).expand(N, -1, -1, -1).reshape(-1, F, D), requires_grad=True)
-        self.Wv = nn.Parameter(torch.randn(T_dim, F, D, device=device).unsqueeze(0).expand(N, -1, -1, -1).reshape(-1, F, D), requires_grad=True)
-        self.bq = nn.Parameter(torch.zeros(T_dim, 1, D, device=device).unsqueeze(0).expand(N, -1, -1, -1).reshape(-1, 1, D), requires_grad=True)
-        self.bk = nn.Parameter(torch.zeros(T_dim, 1, D, device=device).unsqueeze(0).expand(N, -1, -1, -1).reshape(-1, 1, D), requires_grad=True)
-        self.bv = nn.Parameter(torch.zeros(T_dim, 1, D, device=device).unsqueeze(0).expand(N, -1, -1, -1).reshape(-1, 1, D) , requires_grad=True)
+        self.Wq = nn.Parameter(torch.randn(T_dim, F, D).unsqueeze(0).expand(N, -1, -1, -1).reshape(-1, F, D), requires_grad=True)
+        self.Wk = nn.Parameter(torch.randn(T_dim, F, D).unsqueeze(0).expand(N, -1, -1, -1).reshape(-1, F, D), requires_grad=True)
+        self.Wv = nn.Parameter(torch.randn(T_dim, F, D).unsqueeze(0).expand(N, -1, -1, -1).reshape(-1, F, D), requires_grad=True)
+        self.bq = nn.Parameter(torch.zeros(T_dim, 1, D).unsqueeze(0).expand(N, -1, -1, -1).reshape(-1, 1, D), requires_grad=True)
+        self.bk = nn.Parameter(torch.zeros(T_dim, 1, D).unsqueeze(0).expand(N, -1, -1, -1).reshape(-1, 1, D), requires_grad=True)
+        self.bv = nn.Parameter(torch.zeros(T_dim, 1, D).unsqueeze(0).expand(N, -1, -1, -1).reshape(-1, 1, D), requires_grad=True)
 
         self._norm_fact = 1.0 / math.sqrt(D)
 
@@ -28,7 +28,6 @@ class SelfAttention2D_Block_N(nn.Module):
         self.F = F
         self.T_dim = T_dim
         self.D = D
-        self.device = device
 
         self.apply(self.init_weights)
 

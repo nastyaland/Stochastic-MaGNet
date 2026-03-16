@@ -1,33 +1,43 @@
 import torch
+import importlib
 from torch.utils.data import DataLoader
-from MaGNet import MaGNet
 from Dataset import StockDataset
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# CHANGE THIS to 'Magnetv1', 'Magnetv2', or 'Magnetv3' 
+MODEL_VERSION = 'Magnetv1'
+MaGNet = importlib.import_module(MODEL_VERSION).MaGNet
+print(f"Using model: {MODEL_VERSION}")
+
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
 
 # same settings as train.py
-data_path = "djia_alpha158_alpha360.pt"
-weight_path = "best_model.pth"
+data_path = "my_nas100_2025_data.pt"
+weight_path = f"best_model_{MODEL_VERSION}.pth"
 
 dim = 32
 num_experts = 4
 num_heads_mha = 2
 num_channels = 4
 num_heads_CausalMHA = 2
-T = 20
-batch_size = 32
-num_MAGE = 2
+T = 10
+batch_size = 24
+num_MAGE = 1
 num_F2DAttn = 1
-num_TCH = 1
-TopK = 32
-M1 = 32
+num_TCH = 2
+TopK = 64
+M1 = 64
 num_S2DAttn = 1
-num_GPH = 1
-M2 = 16
+num_GPH = 2
+M2 = 32
 num_mc_runs = 100
 
 # load data
-data = torch.load(data_path).to(device)
+data = torch.load(data_path, weights_only=True).to(device)
 
 total_date = data.shape[1]
 train_cutoff = int(total_date * 0.7)
@@ -56,24 +66,32 @@ model = MaGNet(
     dropout=0.1
 ).to(device)
 
-model.load_state_dict(torch.load(weight_path, map_location=device))
+model.load_state_dict(torch.load(weight_path, map_location=device, weights_only=True))
 
 # keep dropout ON
 model.train()
 
 all_mc_preds = []
 
+print("Running MC Dropout inference...")
+
 with torch.no_grad():
-    for _ in range(num_mc_runs):
+    for run in range(num_mc_runs):
         one_run_preds = []
 
-        for x, _ in test_loader:
-            output, *_ = model(x)
-            prob = torch.softmax(output, dim=-1)
-            one_run_preds.append(prob)
+        for X_batch, _ in test_loader:
+            batch_size_actual = X_batch.size(0)
+            for b in range(batch_size_actual):
+                X = X_batch[b].to(device)  # [N, T, F]
+                output, *_ = model(X)
+                prob = torch.softmax(output, dim=-1)
+                one_run_preds.append(prob)
 
         one_run_preds = torch.cat(one_run_preds, dim=0)
         all_mc_preds.append(one_run_preds)
+
+        if (run + 1) % 10 == 0:
+            print(f"  MC run {run + 1}/{num_mc_runs}")
 
 all_mc_preds = torch.stack(all_mc_preds, dim=0)
 
@@ -88,7 +106,7 @@ torch.save(
         "mean_pred": mean_pred.cpu(),
         "var_pred": var_pred.cpu(),
     },
-    "mc_results.pt"
+    f"mc_results_{MODEL_VERSION}.pt"
 )
 
-print("Saved to mc_results.pt")
+print(f"Saved to mc_results_{MODEL_VERSION}.pt")

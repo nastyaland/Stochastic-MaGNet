@@ -3,15 +3,15 @@ import math
 from torch import nn
 
 class SelfAttention2D_Block_F(nn.Module):
-    def __init__(self, N, T, F, N_dim, D, dropout=0.1, device='cuda'):
+    def __init__(self, N, T, F, N_dim, D, dropout=0.1):
         super(SelfAttention2D_Block_F, self).__init__()
 
-        self.Wq = nn.Parameter(torch.randn(N_dim, T, D, device=device).unsqueeze(0).expand(F, -1, -1, -1).reshape(-1, T, D), requires_grad=True)
-        self.Wk = nn.Parameter(torch.randn(N_dim, T, D, device=device).unsqueeze(0).expand(F, -1, -1, -1).reshape(-1, T, D), requires_grad=True)
-        self.Wv = nn.Parameter(torch.randn(N_dim, T, D, device=device).unsqueeze(0).expand(F, -1, -1, -1).reshape(-1, T, D), requires_grad=True)
-        self.bq = nn.Parameter(torch.zeros(N_dim, 1, D, device=device).unsqueeze(0).expand(F, -1, -1, -1).reshape(-1, 1, D), requires_grad=True)
-        self.bk = nn.Parameter(torch.zeros(N_dim, 1, D, device=device).unsqueeze(0).expand(F, -1, -1, -1).reshape(-1, 1, D), requires_grad=True)
-        self.bv = nn.Parameter(torch.zeros(N_dim, 1, D, device=device).unsqueeze(0).expand(F, -1, -1, -1).reshape(-1, 1, D), requires_grad=True)
+        self.Wq = nn.Parameter(torch.randn(N_dim, T, D).unsqueeze(0).expand(F, -1, -1, -1).reshape(-1, T, D), requires_grad=True)
+        self.Wk = nn.Parameter(torch.randn(N_dim, T, D).unsqueeze(0).expand(F, -1, -1, -1).reshape(-1, T, D), requires_grad=True)
+        self.Wv = nn.Parameter(torch.randn(N_dim, T, D).unsqueeze(0).expand(F, -1, -1, -1).reshape(-1, T, D), requires_grad=True)
+        self.bq = nn.Parameter(torch.zeros(N_dim, 1, D).unsqueeze(0).expand(F, -1, -1, -1).reshape(-1, 1, D), requires_grad=True)
+        self.bk = nn.Parameter(torch.zeros(N_dim, 1, D).unsqueeze(0).expand(F, -1, -1, -1).reshape(-1, 1, D), requires_grad=True)
+        self.bv = nn.Parameter(torch.zeros(N_dim, 1, D).unsqueeze(0).expand(F, -1, -1, -1).reshape(-1, 1, D), requires_grad=True)
 
         self._norm_fact = 1.0 / math.sqrt(D)
 

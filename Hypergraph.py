@@ -55,7 +55,7 @@ def keep_top_k_in_rows(matrix, k):
 
 class GenerateLocalHypergraph(nn.Module):
     def __init__(self, N, T, F, num_heads_CausalMHA = 1, Kn=64, num_Local_HGConv=1,
-                 num_local_hyperedge=128, dropout=0.3, epsilon=1e-6, device='cuda'):
+                 num_local_hyperedge=128, dropout=0.3, epsilon=1e-6):
         super().__init__()
         self.CausalMHA = nn.MultiheadAttention(embed_dim=F, num_heads=num_heads_CausalMHA, dropout = dropout,
                                                bias = True, batch_first = True)
@@ -65,10 +65,10 @@ class GenerateLocalHypergraph(nn.Module):
         self.F = F
         self.Kn = Kn
 
-        indices = torch.arange(T * N, device=device)
+        indices = torch.arange(T * N)
         row_block = (indices // N).unsqueeze(1)
         col_block = (indices // N).unsqueeze(0)
-        self.attention_mask = row_block < col_block
+        self.register_buffer('attention_mask', row_block < col_block)
 
         self.H_embedding1 = nn.Linear(T * N, T * N)
         self.H_embedding2 = nn.Linear(T * N, num_local_hyperedge)
@@ -79,7 +79,6 @@ class GenerateLocalHypergraph(nn.Module):
         self.layernorm = nn.LayerNorm(F)
 
         self.apply(self.init_weights)
-        self.device = device
 
         self.norm = nn.ModuleList([nn.LayerNorm(F) for _ in range(num_Local_HGConv)])
         self.dropout = nn.ModuleList([nn.Dropout(dropout) for _ in range(num_Local_HGConv)])

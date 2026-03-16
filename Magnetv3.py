@@ -45,7 +45,7 @@ class MaGNet(nn.Module):
 
         self.LocalHypergraph = GenerateLocalHypergraph(N=N, T=T, F=dim, num_heads_CausalMHA=num_heads_CausalMHA,
                                                        Kn=TopK, num_Local_HGConv=num_TCH,
-                                                       num_local_hyperedge=M1, dropout=dropout,device = device)
+                                                       num_local_hyperedge=M1, dropout=dropout)
 
         self.GlobalHypergraph = GenerateGlobalHypergraph(T=T, F=dim, num_global_hyperedge=M2,
                                                          num_Global_HGConv=num_GPH, dropout=dropout)
