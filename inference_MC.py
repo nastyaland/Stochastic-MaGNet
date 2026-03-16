@@ -2,8 +2,10 @@ import torch
 import importlib
 from torch.utils.data import DataLoader
 from Dataset import StockDataset
+import matplotlib.pyplot as plt
 
 # CHANGE THIS to 'Magnetv1', 'Magnetv2', or 'Magnetv3' 
+
 MODEL_VERSION = 'Magnetv1'
 MaGNet = importlib.import_module(MODEL_VERSION).MaGNet
 print(f"Using model: {MODEL_VERSION}")
@@ -100,6 +102,22 @@ var_pred = all_mc_preds.var(dim=0)
 
 print("mean_pred shape:", mean_pred.shape)
 print("var_pred shape:", var_pred.shape)
+
+# plot and find out the uncertainty of the different models
+uncertainty = var_pred.mean(dim=-1)
+plt.figure(figsize=(8,5))
+
+plt.hist(uncertainty.cpu().numpy(), bins=50)
+
+plt.title("Distribution of Predictive Uncertainty")
+plt.xlabel("Prediction Variance")
+plt.ylabel("Frequency")
+
+plt.show()
+plt.savefig("uncertainty_histogram.png", dpi=300)
+
+print("Mean uncertainty:", uncertainty.mean().item())
+print("Max uncertainty:", uncertainty.max().item())
 
 torch.save(
     {
