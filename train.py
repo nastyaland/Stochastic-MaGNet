@@ -105,6 +105,10 @@ def main(epochs, dim, num_experts, num_heads_mha, num_channels, num_heads_Causal
     )
 
     for epoch in range(epochs):
+
+        if device == 'cuda':
+            torch.cuda.empty_cache()
+
         print(f"\nEpoch {epoch + 1}/{epochs}")
 
         train_metrics = train_epoch(model, train_loader, criterion, optimizer, scaler, device = device)
@@ -123,7 +127,13 @@ def main(epochs, dim, num_experts, num_heads_mha, num_channels, num_heads_Causal
                 torch.save(model.state_dict(), best_model_path)
                 print(f"New best model saved with validation accuracy: {best_val_acc:.4f}")
 
-        for phase in ['train', 'val', 'test']:
+        phase_metrics = {
+            'train': train_metrics,
+            'val':   val_metrics,
+            'test':  test_metrics
+        }
+        
+        for phase, metrics in phase_metrics.items():
             metrics = locals()[f'{phase}_metrics']
             history[f'{phase}_loss'].append(metrics['loss'])
             history[f'{phase}_accuracy'].append(metrics['accuracy'])
@@ -255,31 +265,31 @@ if __name__ == "__main__":
     
     
     SEARCH = True
-    N_TRIALS = 20        # number of Optuna trials
-    SEARCH_EPOCHS = 5    # epochs per trial (keep small for speed)
+    N_TRIALS = 15        
+    SEARCH_EPOCHS = 1    
  
     if SEARCH:
         def objective(trial):
             return main(
                 epochs=SEARCH_EPOCHS,
-                dim=trial.suggest_categorical('dim', [16, 32, 64]),
+                dim=dim,
                 num_experts=num_experts,
                 num_heads_mha=num_heads_mha,
                 num_channels=num_channels,
                 num_heads_CausalMHA=num_heads_CausalMHA,
                 data_path=data_path,
-                T=T,
-                batch_size=trial.suggest_categorical('batch_size', [16, 24, 32, 64]),
-                num_MAGE=num_MAGE,
+                T=trial.suggest_categorical('T', [10, 20, 30]),
+                batch_size=batch_size,
+                num_MAGE=trial.suggest_int('num_MAGE', 1, 2),
                 num_F2DAttn=num_F2DAttn,
-                num_TCH=trial.suggest_int('num_TCH', 1, 4),
+                num_TCH=trial.suggest_int('num_TCH', 1, 2),
                 TopK=trial.suggest_categorical('TopK', [32, 64, 128]),
                 M1=trial.suggest_categorical('M1', [32, 64, 128]),
                 num_S2DAttn=num_S2DAttn,
-                num_GPH=trial.suggest_int('num_GPH', 1, 4),
+                num_GPH=trial.suggest_int('num_GPH', 1, 2),
                 M2=trial.suggest_categorical('M2', [16, 32, 64]),
                 lr=trial.suggest_float('lr', 1e-5, 1e-3, log=True),
-                dropout=trial.suggest_float('dropout', 0.0, 0.4),
+                dropout=0.1,
                 trial=trial,
             )
  
