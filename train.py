@@ -7,9 +7,11 @@ from Dataset import StockDataset
 from tool import EarlyStopping, train_epoch, validate
 from transformers import get_linear_schedule_with_warmup
 import importlib
+import optuna
+
 
 # ── Change this to 'Magnetv1', 'Magnetv2', or 'Magnetv3' ──
-MODEL_VERSION = 'Magnetv2'
+MODEL_VERSION = 'Magnetv1'
 MaGNet = importlib.import_module(MODEL_VERSION).MaGNet
 print(f"Using model: {MODEL_VERSION}")
 
@@ -23,7 +25,7 @@ print("Using device:", device)
 
 def main(epochs, dim, num_experts, num_heads_mha, num_channels, num_heads_CausalMHA,
          data_path, T, batch_size, num_MAGE, num_F2DAttn, num_TCH, TopK, M1,
-         num_S2DAttn, num_GPH, M2):
+         num_S2DAttn, num_GPH, M2, lr=1e-4, dropout= 0.1, trial=None):
     print("Loading and preprocessing data...")
     data= torch.load(data_path, weights_only=True).to(device)
 
@@ -70,9 +72,8 @@ def main(epochs, dim, num_experts, num_heads_mha, num_channels, num_heads_Causal
     model = MaGNet(N, T, F, dim, num_MAGE, num_experts,
                  num_heads_mha, num_F2DAttn, num_channels,
                  num_heads_CausalMHA, num_TCH, TopK, M1,
-                 num_S2DAttn, num_GPH, M2, device=device, dropout=0.1).to(device)
+                 num_S2DAttn, num_GPH, M2, device=device, dropout=dropout).to(device)
 
-    lr=1e-4
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.05)
     scaler = GradScaler(enabled=device.type == 'cuda')
@@ -118,8 +119,9 @@ def main(epochs, dim, num_experts, num_heads_mha, num_channels, num_heads_Causal
 
         if val_metrics['accuracy'] > best_val_acc:
             best_val_acc = val_metrics['accuracy']
-            torch.save(model.state_dict(), best_model_path)
-            print(f"New best model saved with validation accuracy: {best_val_acc:.4f}")
+            if trial is None:
+                torch.save(model.state_dict(), best_model_path)
+                print(f"New best model saved with validation accuracy: {best_val_acc:.4f}")
 
         for phase in ['train', 'val', 'test']:
             metrics = locals()[f'{phase}_metrics']
@@ -141,6 +143,15 @@ def main(epochs, dim, num_experts, num_heads_mha, num_channels, num_heads_Causal
         if early_stopping.early_stop:
             print("Early stopping triggered")
             break
+
+                
+        if trial is not None:
+            trial.report(best_val_acc, epoch)
+            if trial.should_prune():
+                raise optuna.TrialPruned()
+            
+    if trial is not None: 
+        return best_val_acc
 
     plt.figure(figsize=(16, 8))
 
@@ -215,6 +226,8 @@ def main(epochs, dim, num_experts, num_heads_mha, num_channels, num_heads_Causal
     print("Training completed!")
     print(f"Best validation accuracy: {best_val_acc:.4f}")
 
+    return best_val_acc
+
 if __name__ == "__main__":
     # common parameters
     epochs = 2
@@ -239,9 +252,48 @@ if __name__ == "__main__":
     M1 = 64  # number of hyperedges in TCH
     num_GPH = 2  # number of GPH
     M2 = 32  # number of hyperedges in GPH
-    main(epochs, dim, num_experts, num_heads_mha, num_channels, num_heads_CausalMHA,
-         data_path, T, batch_size, num_MAGE, num_F2DAttn, num_TCH, TopK, M1,
-         num_S2DAttn, num_GPH, M2)
+    
+    
+    SEARCH = True
+    N_TRIALS = 20        # number of Optuna trials
+    SEARCH_EPOCHS = 5    # epochs per trial (keep small for speed)
+ 
+    if SEARCH:
+        def objective(trial):
+            return main(
+                epochs=SEARCH_EPOCHS,
+                dim=trial.suggest_categorical('dim', [16, 32, 64]),
+                num_experts=num_experts,
+                num_heads_mha=num_heads_mha,
+                num_channels=num_channels,
+                num_heads_CausalMHA=num_heads_CausalMHA,
+                data_path=data_path,
+                T=T,
+                batch_size=trial.suggest_categorical('batch_size', [16, 24, 32, 64]),
+                num_MAGE=num_MAGE,
+                num_F2DAttn=num_F2DAttn,
+                num_TCH=trial.suggest_int('num_TCH', 1, 4),
+                TopK=trial.suggest_categorical('TopK', [32, 64, 128]),
+                M1=trial.suggest_categorical('M1', [32, 64, 128]),
+                num_S2DAttn=num_S2DAttn,
+                num_GPH=trial.suggest_int('num_GPH', 1, 4),
+                M2=trial.suggest_categorical('M2', [16, 32, 64]),
+                lr=trial.suggest_float('lr', 1e-5, 1e-3, log=True),
+                dropout=trial.suggest_float('dropout', 0.0, 0.4),
+                trial=trial,
+            )
+ 
+        study = optuna.create_study(direction='maximize', pruner=optuna.pruners.MedianPruner())
+        study.optimize(objective, n_trials=N_TRIALS)
+ 
+        print("\nBest trial:")
+        print(f"  val_accuracy: {study.best_value:.4f}")
+        print(f"  params: {study.best_params}")
+ 
+    else:
+        main(epochs, dim, num_experts, num_heads_mha, num_channels, num_heads_CausalMHA,
+             data_path, T, batch_size, num_MAGE, num_F2DAttn, num_TCH, TopK, M1,
+             num_S2DAttn, num_GPH, M2)
 
 
 
