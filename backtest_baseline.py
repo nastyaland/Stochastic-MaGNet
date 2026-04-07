@@ -41,6 +41,14 @@ def split_data_by_time(data: torch.Tensor) -> Dict[str, torch.Tensor]:
     }
 
 
+def build_evaluation_split(split_data: Dict[str, torch.Tensor], eval_split: str) -> torch.Tensor:
+    if eval_split == "test":
+        return split_data["test"]
+    if eval_split == "val_test":
+        return torch.cat([split_data["val"], split_data["test"]], dim=1)
+    raise ValueError(f"Unsupported eval_split: {eval_split}")
+
+
 def normalize_split(split_data: torch.Tensor, epsilon: float = 1e-6) -> torch.Tensor:
     split_mean = split_data.mean(dim=1, keepdim=True)
     split_std = split_data.std(dim=1, keepdim=True)
@@ -132,6 +140,7 @@ class DailyPortfolioTradingStrategy:
         q_stop_loss: float = 0.5,
         r_rising_ratio: float = 1.0,
         risk_free_rate: float = 0.02,
+        rebalance_frequency: int = 1,
     ):
         if not (0 < p_ratio <= 1):
             raise ValueError("p_ratio must satisfy 0 < p_ratio <= 1.")
@@ -139,6 +148,8 @@ class DailyPortfolioTradingStrategy:
             raise ValueError("q_stop_loss must satisfy 0 < q_stop_loss < 1.")
         if not (0 <= r_rising_ratio <= 1):
             raise ValueError("r_rising_ratio must satisfy 0 <= r_rising_ratio <= 1.")
+        if rebalance_frequency < 1:
+            raise ValueError("rebalance_frequency must be at least 1.")
 
         self.initial_capital = initial_capital
         self.transaction_cost_rate = transaction_cost_rate
@@ -146,6 +157,7 @@ class DailyPortfolioTradingStrategy:
         self.q_stop_loss = q_stop_loss
         self.r_rising_ratio = r_rising_ratio
         self.risk_free_rate = risk_free_rate
+        self.rebalance_frequency = rebalance_frequency
         self.reset_tracking()
 
     def reset_tracking(self) -> None:
@@ -266,11 +278,14 @@ class DailyPortfolioTradingStrategy:
         for day_idx in range(t_days):
             day_rise_probs = torch.tensor(rise_probs_np[:, day_idx])
             current_prices = close_prices_np[:, day_idx]
-            target_stocks, _ = self.select_stocks(day_rise_probs)
-
-            holdings, cash, transaction_cost, num_trades = self.execute_trades(
-                holdings, target_stocks, current_prices, cash
-            )
+            if day_idx % self.rebalance_frequency == 0:
+                target_stocks, _ = self.select_stocks(day_rise_probs)
+                holdings, cash, transaction_cost, num_trades = self.execute_trades(
+                    holdings, target_stocks, current_prices, cash
+                )
+            else:
+                transaction_cost = 0.0
+                num_trades = 0
 
             self.transaction_costs.append(transaction_cost)
             self.transaction_counts.append(num_trades)
@@ -303,7 +318,9 @@ class DailyPortfolioTradingStrategy:
         trading_days = len(self.daily_returns)
         if trading_days > 0:
             returns_array = np.asarray(self.daily_returns, dtype=np.float64)
-            metrics["annual_return"] = metrics["cumulative_return"] * (252.0 / trading_days)
+            metrics["annual_return"] = float(
+                (self.portfolio_values[-1] / self.initial_capital) ** (252.0 / trading_days) - 1.0
+            )
         else:
             returns_array = np.asarray([], dtype=np.float64)
             metrics["annual_return"] = 0.0
@@ -345,6 +362,8 @@ class DailyPortfolioTradingStrategy:
 
     def plot_results(self, title: str, save_path: str) -> None:
         try:
+            import matplotlib
+            matplotlib.use("Agg")
             import matplotlib.pyplot as plt
         except ModuleNotFoundError:
             print("matplotlib is not installed; skipping plot generation.")
@@ -408,6 +427,7 @@ def grid_search_strategy(
     initial_capital: float,
     transaction_cost_rate: float,
     risk_free_rate: float,
+    rebalance_frequency: int,
 ) -> Tuple[Dict[str, float], Dict[str, float]]:
     best_config: Optional[Dict[str, float]] = None
     best_metrics: Optional[Dict[str, float]] = None
@@ -422,6 +442,7 @@ def grid_search_strategy(
             q_stop_loss=q_stop_loss,
             r_rising_ratio=r_rising_ratio,
             risk_free_rate=risk_free_rate,
+            rebalance_frequency=rebalance_frequency,
         )
         metrics = strategy.run_backtest(rise_probabilities, close_prices)
         objective = (metrics["sharpe_ratio"], metrics["annual_return"])
@@ -503,6 +524,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--initial-capital", type=float, default=1_000_000.0)
     parser.add_argument("--transaction-cost-rate", type=float, default=0.0025)
     parser.add_argument("--risk-free-rate", type=float, default=0.02)
+    parser.add_argument("--rebalance-frequency", type=int, default=1)
     parser.add_argument("--fixed-p-ratio", type=float, default=None)
     parser.add_argument("--fixed-q-stop-loss", type=float, default=None)
     parser.add_argument("--fixed-r-rising-ratio", type=float, default=None)
@@ -510,6 +532,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--q-grid", type=float, nargs="*", default=[])
     parser.add_argument("--r-grid", type=float, nargs="*", default=[])
     parser.add_argument("--output-dir", default="backtest_outputs")
+    parser.add_argument("--eval-split", choices=["test", "val_test"], default="test")
     return parser
 
 
@@ -547,9 +570,31 @@ def main(args: argparse.Namespace) -> None:
     variances_by_split: Dict[str, Optional[torch.Tensor]] = {}
     close_prices_by_split: Dict[str, torch.Tensor] = {}
 
-    for split_name in ("val", "test"):
-        print(f"\nPreparing {split_name} split...")
-        raw_split = split_data[split_name]
+    eval_label = "Test Metrics" if args.eval_split == "test" else "Combined Val+Test Metrics"
+    eval_raw_split = build_evaluation_split(split_data, args.eval_split)
+    print(f"\nPreparing {args.eval_split} evaluation split...")
+    eval_normalized_split = normalize_split(eval_raw_split)
+    eval_probabilities, eval_variances = predict_probabilities(
+        model=model,
+        split_data=eval_normalized_split,
+        lookback=args.lookback,
+        device=device,
+    )
+    probabilities_by_split["eval"] = eval_probabilities
+    variances_by_split["eval"] = eval_variances
+    close_prices_by_split["eval"] = generate_close_prices(eval_raw_split, args.lookback)
+
+    fixed_config = (
+        args.fixed_p_ratio is not None
+        and args.fixed_q_stop_loss is not None
+        and args.fixed_r_rising_ratio is not None
+    )
+
+    needs_validation = (not fixed_config) or args.eval_split == "test"
+
+    if needs_validation:
+        print("\nPreparing val split...")
+        raw_split = split_data["val"]
         normalized_split = normalize_split(raw_split)
         probabilities, variances = predict_probabilities(
             model=model,
@@ -557,15 +602,9 @@ def main(args: argparse.Namespace) -> None:
             lookback=args.lookback,
             device=device,
         )
-        probabilities_by_split[split_name] = probabilities
-        variances_by_split[split_name] = variances
-        close_prices_by_split[split_name] = generate_close_prices(raw_split, args.lookback)
-
-    fixed_config = (
-        args.fixed_p_ratio is not None
-        and args.fixed_q_stop_loss is not None
-        and args.fixed_r_rising_ratio is not None
-    )
+        probabilities_by_split["val"] = probabilities
+        variances_by_split["val"] = variances
+        close_prices_by_split["val"] = generate_close_prices(raw_split, args.lookback)
 
     if fixed_config:
         best_config = {
@@ -574,18 +613,21 @@ def main(args: argparse.Namespace) -> None:
             "r_rising_ratio": args.fixed_r_rising_ratio,
         }
         print("\nUsing fixed config:", best_config)
-        val_strategy = DailyPortfolioTradingStrategy(
-            initial_capital=args.initial_capital,
-            transaction_cost_rate=args.transaction_cost_rate,
-            p_ratio=best_config["p_ratio"],
-            q_stop_loss=best_config["q_stop_loss"],
-            r_rising_ratio=best_config["r_rising_ratio"],
-            risk_free_rate=args.risk_free_rate,
-        )
-        val_metrics = val_strategy.run_backtest(
-            probabilities_by_split["val"][:, :, 1],
-            close_prices_by_split["val"],
-        )
+        val_metrics = None
+        if args.eval_split == "test":
+            val_strategy = DailyPortfolioTradingStrategy(
+                initial_capital=args.initial_capital,
+                transaction_cost_rate=args.transaction_cost_rate,
+                p_ratio=best_config["p_ratio"],
+                q_stop_loss=best_config["q_stop_loss"],
+                r_rising_ratio=best_config["r_rising_ratio"],
+                risk_free_rate=args.risk_free_rate,
+                rebalance_frequency=args.rebalance_frequency,
+            )
+            val_metrics = val_strategy.run_backtest(
+                probabilities_by_split["val"][:, :, 1],
+                close_prices_by_split["val"],
+            )
     else:
         p_grid = parse_grid(args.p_grid, 0.05, 1.0, 0.05)
         q_grid = parse_grid(args.q_grid, 0.05, 0.95, 0.05)
@@ -600,11 +642,13 @@ def main(args: argparse.Namespace) -> None:
             initial_capital=args.initial_capital,
             transaction_cost_rate=args.transaction_cost_rate,
             risk_free_rate=args.risk_free_rate,
+            rebalance_frequency=args.rebalance_frequency,
         )
 
         print("\nBest validation config:", best_config)
 
-    print_metrics("Validation Metrics", val_metrics)
+    if val_metrics is not None:
+        print_metrics("Validation Metrics", val_metrics)
 
     test_strategy = DailyPortfolioTradingStrategy(
         initial_capital=args.initial_capital,
@@ -613,16 +657,17 @@ def main(args: argparse.Namespace) -> None:
         q_stop_loss=best_config["q_stop_loss"],
         r_rising_ratio=best_config["r_rising_ratio"],
         risk_free_rate=args.risk_free_rate,
+        rebalance_frequency=args.rebalance_frequency,
     )
     test_metrics = test_strategy.run_backtest(
-        probabilities_by_split["test"][:, :, 1],
-        close_prices_by_split["test"],
+        probabilities_by_split["eval"][:, :, 1],
+        close_prices_by_split["eval"],
     )
-    print_metrics("Test Metrics", test_metrics)
+    print_metrics(eval_label, test_metrics)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    mode_tag = f"{args.model_version}_baseline"
+    mode_tag = f"{args.model_version}_baseline_{args.eval_split}"
 
     plot_path = output_dir / f"backtest_{mode_tag}.png"
     test_strategy.plot_results(
@@ -634,9 +679,11 @@ def main(args: argparse.Namespace) -> None:
         "data_name": args.data_name,
         "model_version": args.model_version,
         "prediction_mode": "deterministic",
+        "rebalance_frequency": args.rebalance_frequency,
+        "eval_split": args.eval_split,
         "best_validation_config": best_config,
         "validation_metrics": val_metrics,
-        "test_metrics": test_metrics,
+        "evaluation_metrics": test_metrics,
     }
 
     result_path = output_dir / f"backtest_{mode_tag}.json"

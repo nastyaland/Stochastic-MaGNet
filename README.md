@@ -90,32 +90,86 @@ Both scripts expect:
 - `data_collection\my_nas100_2025_data.pt`
 - a trained checkpoint such as `trainHistory\trainMagnetv1\best_model_Magnetv1.pth`
 
-### Baseline Backtest
+Useful split options:
 
-Deterministic baseline with fixed parameters:
+- `--eval-split test`: evaluate validation and test separately
+- `--eval-split val_test`: evaluate a combined out-of-sample period using validation + test
+
+### Operation Guide
+
+The three commands below are the current recommended NASDAQ100 runs with the best-performing fixed parameter set:
+
+- `p_ratio = 0.5`
+- `q_stop_loss = 0.4`
+- `r_rising_ratio = 1`
+- `rebalance_frequency = 5`
+
+#### 1. Combined Deterministic Baseline
+
+This is the strongest deterministic reference run on the combined out-of-sample period:
 
 ```powershell
-python backtest_baseline.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --fixed-p-ratio 1 --fixed-q-stop-loss 0.2 --fixed-r-rising-ratio 1
+python backtest_baseline.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --fixed-p-ratio 0.5 --fixed-q-stop-loss 0.4 --fixed-r-rising-ratio 1 --rebalance-frequency 5 --eval-split val_test
+```
+
+#### 2. Combined Bayesian Mean-Only
+
+This run uses MC Dropout mean probabilities only, with no variance filtering:
+
+```powershell
+python backtest_bayesian.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --deterministic-val --num-mc-runs 20 --fixed-p-ratio 0.5 --fixed-q-stop-loss 0.4 --fixed-r-rising-ratio 1 --rebalance-frequency 5 --prob-threshold 0.5 --variance-quantile 1.0 --variance-weight 0 --eval-split val_test
+```
+
+#### 3. Combined Bayesian with Light Variance Selection
+
+This run adds a light uncertainty filter on top of the MC mean signal:
+
+```powershell
+python backtest_bayesian.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --deterministic-val --num-mc-runs 20 --fixed-p-ratio 0.5 --fixed-q-stop-loss 0.4 --fixed-r-rising-ratio 1 --rebalance-frequency 5 --prob-threshold 0.5 --variance-quantile 0.95 --variance-weight 0.5 --eval-split val_test
+```
+
+### Baseline Backtest
+
+Recommended deterministic baseline with lower turnover:
+
+```powershell
+python backtest_baseline.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --fixed-p-ratio 0.5 --fixed-q-stop-loss 0.4 --fixed-r-rising-ratio 1 --rebalance-frequency 5
 ```
 
 Deterministic baseline with validation grid search:
 
 ```powershell
-python backtest_baseline.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --p-grid 0.2 0.4 0.6 0.8 1.0 --q-grid 0.05 0.2 0.4 --r-grid 0 0.5 1
+python backtest_baseline.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --rebalance-frequency 5 --p-grid 0.1 0.2 0.3 0.5 0.7 1.0 --q-grid 0.05 0.1 0.2 0.4 --r-grid 0.5 0.75 1
 ```
 
 ### Bayesian Backtest
 
-Use deterministic validation for `p / q / r` tuning and MC Dropout only on test:
+Use deterministic validation for `p / q / r` tuning and MC Dropout only on test.
+
+Lightweight Bayesian run (`20` MC passes, faster on CPU):
 
 ```powershell
-python backtest_bayesian.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --deterministic-val --num-mc-runs 20 --p-grid 0.2 0.4 0.6 0.8 1.0 --q-grid 0.05 0.2 0.4 --r-grid 0 0.5 1
+python backtest_bayesian.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --deterministic-val --num-mc-runs 20 --rebalance-frequency 5 --p-grid 0.1 0.2 0.3 0.5 0.7 1.0 --q-grid 0.05 0.1 0.2 0.4 --r-grid 0.5 0.75 1
 ```
 
-Use fixed baseline parameters plus Bayesian risk control:
+Standard Bayesian run (`100` MC passes):
 
 ```powershell
-python backtest_bayesian.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --deterministic-val --num-mc-runs 20 --fixed-p-ratio 1 --fixed-q-stop-loss 0.2 --fixed-r-rising-ratio 1 --prob-threshold 0.5 --variance-quantile 0.8 --variance-weight 10 --market-variance-threshold 0.003
+python backtest_bayesian.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --deterministic-val --num-mc-runs 100 --rebalance-frequency 5 --p-grid 0.1 0.2 0.3 0.5 0.7 1.0 --q-grid 0.05 0.1 0.2 0.4 --r-grid 0.5 0.75 1
+```
+
+Use fixed baseline parameters plus Bayesian risk control.
+
+Lightweight Bayesian risk-control run (`20` MC passes):
+
+```powershell
+python backtest_bayesian.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --deterministic-val --num-mc-runs 20 --fixed-p-ratio 0.5 --fixed-q-stop-loss 0.4 --fixed-r-rising-ratio 1 --rebalance-frequency 5 --prob-threshold 0.5 --variance-quantile 0.8 --variance-weight 10 --market-variance-threshold 0.003
+```
+
+Standard Bayesian risk-control run (`100` MC passes):
+
+```powershell
+python backtest_bayesian.py --data-name NASDAQ100 --data-path data_collection\my_nas100_2025_data.pt --weight-path trainHistory\trainMagnetv1\best_model_Magnetv1.pth --model-version Magnetv1 --deterministic-val --num-mc-runs 100 --fixed-p-ratio 0.5 --fixed-q-stop-loss 0.4 --fixed-r-rising-ratio 1 --rebalance-frequency 5 --prob-threshold 0.5 --variance-quantile 0.8 --variance-weight 10 --market-variance-threshold 0.003
 ```
 
 Bayesian risk-control arguments:
@@ -126,6 +180,8 @@ Bayesian risk-control arguments:
 - `--market-variance-threshold`: if average daily market uncertainty is above this threshold, skip trading for that day
 - `--num-mc-runs`: number of stochastic forward passes for MC Dropout
 - `--deterministic-val`: tune `p / q / r` on deterministic validation predictions, then apply Bayesian inference only on test
+- `--rebalance-frequency`: rebalance every `k` trading days instead of every day; this can materially reduce turnover and transaction costs
+- `--eval-split`: choose `test` for separate validation/test reporting or `val_test` for a combined out-of-sample evaluation period
 
 ## Output Files
 
@@ -141,5 +197,6 @@ Backtest outputs are written to `backtest_outputs/`:
 
 - `backtest_baseline.py` uses a single deterministic forward pass.
 - `backtest_bayesian.py` is slower because it runs multiple stochastic forward passes.
-- On CPU, Bayesian backtesting can take a long time. For faster experiments, reduce `--num-mc-runs` from `100` to `20`.
+- On CPU, Bayesian backtesting can take a long time. Use `--num-mc-runs 20` for faster exploratory runs and `--num-mc-runs 100` for the standard MC setting.
+- In our NASDAQ100 tests, lowering turnover with `--rebalance-frequency 5` produced much better baseline performance than daily rebalancing.
 - Device selection is automatic: CUDA first, then MPS, then CPU.

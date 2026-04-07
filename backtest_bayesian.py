@@ -11,6 +11,7 @@ from tqdm import tqdm
 from Dataset import StockDataset
 from backtest_baseline import (
     DailyPortfolioTradingStrategy,
+    build_evaluation_split,
     generate_close_prices,
     get_device,
     grid_search_strategy,
@@ -191,14 +192,24 @@ class BayesianPortfolioTradingStrategy(DailyPortfolioTradingStrategy):
             day_variances = torch.tensor(variances_np[:, day_idx])
             current_prices = close_prices_np[:, day_idx]
 
-            if self.should_skip_day(day_mean_probs, day_variances):
-                self.filtered_out_counts.append(0)
-                target_stocks = []
+            if day_idx % self.rebalance_frequency == 0:
+                if self.should_skip_day(day_mean_probs, day_variances):
+                    self.filtered_out_counts.append(0)
+                    target_stocks = []
+                else:
+                    target_stocks, _ = self.select_stocks_with_uncertainty(
+                        day_mean_probs,
+                        day_variances,
+                    )
+                holdings, cash, transaction_cost, num_trades = self.execute_trades(
+                    holdings,
+                    target_stocks,
+                    current_prices,
+                    cash,
+                )
             else:
-                target_stocks, _ = self.select_stocks_with_uncertainty(day_mean_probs, day_variances)
-            holdings, cash, transaction_cost, num_trades = self.execute_trades(
-                holdings, target_stocks, current_prices, cash
-            )
+                transaction_cost = 0.0
+                num_trades = 0
 
             self.transaction_costs.append(transaction_cost)
             self.transaction_counts.append(num_trades)
@@ -244,6 +255,7 @@ def grid_search_bayesian_strategy(
     initial_capital: float,
     transaction_cost_rate: float,
     risk_free_rate: float,
+    rebalance_frequency: int,
     prob_threshold: float,
     variance_quantile: float,
     variance_weight: float,
@@ -263,6 +275,7 @@ def grid_search_bayesian_strategy(
                     q_stop_loss=q_stop_loss,
                     r_rising_ratio=r_rising_ratio,
                     risk_free_rate=risk_free_rate,
+                    rebalance_frequency=rebalance_frequency,
                     prob_threshold=prob_threshold,
                     variance_quantile=variance_quantile,
                     variance_weight=variance_weight,
@@ -314,6 +327,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--initial-capital", type=float, default=1_000_000.0)
     parser.add_argument("--transaction-cost-rate", type=float, default=0.0025)
     parser.add_argument("--risk-free-rate", type=float, default=0.02)
+    parser.add_argument("--rebalance-frequency", type=int, default=1)
     parser.add_argument("--fixed-p-ratio", type=float, default=None)
     parser.add_argument("--fixed-q-stop-loss", type=float, default=None)
     parser.add_argument("--fixed-r-rising-ratio", type=float, default=None)
@@ -326,6 +340,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--q-grid", type=float, nargs="*", default=[])
     parser.add_argument("--r-grid", type=float, nargs="*", default=[])
     parser.add_argument("--output-dir", default="backtest_outputs")
+    parser.add_argument("--eval-split", choices=["test", "val_test"], default="test")
     return parser
 
 
@@ -364,50 +379,53 @@ def main(args: argparse.Namespace) -> None:
     variances_by_split: Dict[str, Optional[torch.Tensor]] = {}
     close_prices_by_split: Dict[str, torch.Tensor] = {}
 
-    print("\nPreparing val split...")
-    val_raw_split = split_data["val"]
-    val_normalized_split = normalize_split(val_raw_split)
-    if args.deterministic_val:
-        val_probs, _ = predict_probabilities(
-            model=model,
-            split_data=val_normalized_split,
-            lookback=args.lookback,
-            device=device,
-        )
-        mean_probs_by_split["val"] = val_probs
-        variances_by_split["val"] = None
-        print("Validation will use deterministic probabilities for tuning.")
-    else:
-        val_mean_probs, val_variances = predict_probabilities_mc(
-            model=model,
-            split_data=val_normalized_split,
-            lookback=args.lookback,
-            device=device,
-            num_mc_runs=args.num_mc_runs,
-        )
-        mean_probs_by_split["val"] = val_mean_probs
-        variances_by_split["val"] = val_variances
-    close_prices_by_split["val"] = generate_close_prices(val_raw_split, args.lookback)
-
-    print("\nPreparing test split...")
-    test_raw_split = split_data["test"]
-    test_normalized_split = normalize_split(test_raw_split)
-    test_mean_probs, test_variances = predict_probabilities_mc(
-        model=model,
-        split_data=test_normalized_split,
-        lookback=args.lookback,
-        device=device,
-        num_mc_runs=args.num_mc_runs,
-    )
-    mean_probs_by_split["test"] = test_mean_probs
-    variances_by_split["test"] = test_variances
-    close_prices_by_split["test"] = generate_close_prices(test_raw_split, args.lookback)
-
+    eval_label = "Test Metrics" if args.eval_split == "test" else "Combined Val+Test Metrics"
     fixed_config = (
         args.fixed_p_ratio is not None
         and args.fixed_q_stop_loss is not None
         and args.fixed_r_rising_ratio is not None
     )
+    needs_validation = (not fixed_config) or args.eval_split == "test"
+
+    if needs_validation:
+        print("\nPreparing val split...")
+        val_raw_split = split_data["val"]
+        val_normalized_split = normalize_split(val_raw_split)
+        if args.deterministic_val:
+            val_probs, _ = predict_probabilities(
+                model=model,
+                split_data=val_normalized_split,
+                lookback=args.lookback,
+                device=device,
+            )
+            mean_probs_by_split["val"] = val_probs
+            variances_by_split["val"] = None
+            print("Validation will use deterministic probabilities for tuning.")
+        else:
+            val_mean_probs, val_variances = predict_probabilities_mc(
+                model=model,
+                split_data=val_normalized_split,
+                lookback=args.lookback,
+                device=device,
+                num_mc_runs=args.num_mc_runs,
+            )
+            mean_probs_by_split["val"] = val_mean_probs
+            variances_by_split["val"] = val_variances
+        close_prices_by_split["val"] = generate_close_prices(val_raw_split, args.lookback)
+
+    print(f"\nPreparing {args.eval_split} evaluation split...")
+    eval_raw_split = build_evaluation_split(split_data, args.eval_split)
+    eval_normalized_split = normalize_split(eval_raw_split)
+    eval_mean_probs, eval_variances = predict_probabilities_mc(
+        model=model,
+        split_data=eval_normalized_split,
+        lookback=args.lookback,
+        device=device,
+        num_mc_runs=args.num_mc_runs,
+    )
+    mean_probs_by_split["eval"] = eval_mean_probs
+    variances_by_split["eval"] = eval_variances
+    close_prices_by_split["eval"] = generate_close_prices(eval_raw_split, args.lookback)
 
     if fixed_config:
         best_config = {
@@ -416,37 +434,41 @@ def main(args: argparse.Namespace) -> None:
             "r_rising_ratio": args.fixed_r_rising_ratio,
         }
         print("\nUsing fixed config:", best_config)
-        if args.deterministic_val:
-            val_strategy = DailyPortfolioTradingStrategy(
-                initial_capital=args.initial_capital,
-                transaction_cost_rate=args.transaction_cost_rate,
-                p_ratio=best_config["p_ratio"],
-                q_stop_loss=best_config["q_stop_loss"],
-                r_rising_ratio=best_config["r_rising_ratio"],
-                risk_free_rate=args.risk_free_rate,
-            )
-            val_metrics = val_strategy.run_backtest(
-                mean_probs_by_split["val"][:, :, 1],
-                close_prices_by_split["val"],
-            )
-        else:
-            val_strategy = BayesianPortfolioTradingStrategy(
-                initial_capital=args.initial_capital,
-                transaction_cost_rate=args.transaction_cost_rate,
-                p_ratio=best_config["p_ratio"],
-                q_stop_loss=best_config["q_stop_loss"],
-                r_rising_ratio=best_config["r_rising_ratio"],
-                risk_free_rate=args.risk_free_rate,
-                prob_threshold=args.prob_threshold,
-                variance_quantile=args.variance_quantile,
-                variance_weight=args.variance_weight,
-                market_variance_threshold=args.market_variance_threshold,
-            )
-            val_metrics = val_strategy.run_backtest(
-                mean_rise_probabilities=mean_probs_by_split["val"][:, :, 1],
-                close_prices=close_prices_by_split["val"],
-                rise_variances=variances_by_split["val"][:, :, 1],
-            )
+        val_metrics = None
+        if args.eval_split == "test":
+            if args.deterministic_val:
+                val_strategy = DailyPortfolioTradingStrategy(
+                    initial_capital=args.initial_capital,
+                    transaction_cost_rate=args.transaction_cost_rate,
+                    p_ratio=best_config["p_ratio"],
+                    q_stop_loss=best_config["q_stop_loss"],
+                    r_rising_ratio=best_config["r_rising_ratio"],
+                    risk_free_rate=args.risk_free_rate,
+                    rebalance_frequency=args.rebalance_frequency,
+                )
+                val_metrics = val_strategy.run_backtest(
+                    mean_probs_by_split["val"][:, :, 1],
+                    close_prices_by_split["val"],
+                )
+            else:
+                val_strategy = BayesianPortfolioTradingStrategy(
+                    initial_capital=args.initial_capital,
+                    transaction_cost_rate=args.transaction_cost_rate,
+                    p_ratio=best_config["p_ratio"],
+                    q_stop_loss=best_config["q_stop_loss"],
+                    r_rising_ratio=best_config["r_rising_ratio"],
+                    risk_free_rate=args.risk_free_rate,
+                    rebalance_frequency=args.rebalance_frequency,
+                    prob_threshold=args.prob_threshold,
+                    variance_quantile=args.variance_quantile,
+                    variance_weight=args.variance_weight,
+                    market_variance_threshold=args.market_variance_threshold,
+                )
+                val_metrics = val_strategy.run_backtest(
+                    mean_rise_probabilities=mean_probs_by_split["val"][:, :, 1],
+                    close_prices=close_prices_by_split["val"],
+                    rise_variances=variances_by_split["val"][:, :, 1],
+                )
     else:
         p_grid = parse_grid(args.p_grid, 0.05, 1.0, 0.05)
         q_grid = parse_grid(args.q_grid, 0.05, 0.95, 0.05)
@@ -475,6 +497,7 @@ def main(args: argparse.Namespace) -> None:
                 initial_capital=args.initial_capital,
                 transaction_cost_rate=args.transaction_cost_rate,
                 risk_free_rate=args.risk_free_rate,
+                rebalance_frequency=args.rebalance_frequency,
                 prob_threshold=args.prob_threshold,
                 variance_quantile=args.variance_quantile,
                 variance_weight=args.variance_weight,
@@ -482,7 +505,8 @@ def main(args: argparse.Namespace) -> None:
             )
             print("\nBest validation config:", best_config)
 
-    print_metrics("Validation Metrics", val_metrics)
+    if val_metrics is not None:
+        print_metrics("Validation Metrics", val_metrics)
 
     test_strategy = BayesianPortfolioTradingStrategy(
         initial_capital=args.initial_capital,
@@ -491,24 +515,25 @@ def main(args: argparse.Namespace) -> None:
         q_stop_loss=best_config["q_stop_loss"],
         r_rising_ratio=best_config["r_rising_ratio"],
         risk_free_rate=args.risk_free_rate,
+        rebalance_frequency=args.rebalance_frequency,
         prob_threshold=args.prob_threshold,
         variance_quantile=args.variance_quantile,
         variance_weight=args.variance_weight,
         market_variance_threshold=args.market_variance_threshold,
     )
     test_metrics = test_strategy.run_backtest(
-        mean_rise_probabilities=mean_probs_by_split["test"][:, :, 1],
-        close_prices=close_prices_by_split["test"],
-        rise_variances=variances_by_split["test"][:, :, 1],
+        mean_rise_probabilities=mean_probs_by_split["eval"][:, :, 1],
+        close_prices=close_prices_by_split["eval"],
+        rise_variances=variances_by_split["eval"][:, :, 1],
     )
-    print_metrics("Test Metrics", test_metrics)
+    print_metrics(eval_label, test_metrics)
     print(f"Avg filtered-out stocks/day: {test_metrics['avg_filtered_out']:.2f}")
     print(f"Skipped days due to market uncertainty: {int(test_metrics['skipped_days_due_to_market_uncertainty'])}")
     print(f"Average daily market variance: {test_metrics['avg_market_variance']:.6f}")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    mode_tag = f"{args.model_version}_bayesian"
+    mode_tag = f"{args.model_version}_bayesian_{args.eval_split}"
 
     plot_path = output_dir / f"backtest_{mode_tag}.png"
     test_strategy.plot_results(
@@ -519,8 +544,12 @@ def main(args: argparse.Namespace) -> None:
     variance_path = output_dir / f"variance_summary_{mode_tag}.pt"
     torch.save(
         {
-            "val_variance": None if variances_by_split["val"] is None else variances_by_split["val"].cpu(),
-            "test_variance": variances_by_split["test"].cpu(),
+            "val_variance": (
+                None
+                if "val" not in variances_by_split or variances_by_split["val"] is None
+                else variances_by_split["val"].cpu()
+            ),
+            "evaluation_variance": variances_by_split["eval"].cpu(),
         },
         variance_path,
     )
@@ -531,13 +560,15 @@ def main(args: argparse.Namespace) -> None:
         "prediction_mode": "mc",
         "num_mc_runs": args.num_mc_runs,
         "deterministic_val": args.deterministic_val,
+        "rebalance_frequency": args.rebalance_frequency,
+        "eval_split": args.eval_split,
         "prob_threshold": args.prob_threshold,
         "variance_quantile": args.variance_quantile,
         "variance_weight": args.variance_weight,
         "market_variance_threshold": args.market_variance_threshold,
         "best_validation_config": best_config,
         "validation_metrics": val_metrics,
-        "test_metrics": test_metrics,
+        "evaluation_metrics": test_metrics,
         "variance_path": str(variance_path),
     }
 
