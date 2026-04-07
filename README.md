@@ -40,6 +40,23 @@ Expected output file:
 
 - `data_collection/my_nas100_2025_data.pt`
 
+## Hyperparameter Search 
+
+1.  Open `train.py` and choose the model version:
+
+```python
+MODEL_VERSION = 'Magnetv1'  # or 'Magnetv2' / 'Magnetv3'
+```
+2. Go to main and set
+```python
+SEARCH = True
+```
+4. In SEARCH, adjust the hyperparameters to search, the num_trials, and search_epochs
+5. Run:
+```powershell
+python train.py
+```
+5. Optuna runs a tree search and terminal outputs the best hyperparameters found
 ## Training
 
 1. Open `train.py` and choose the model version:
