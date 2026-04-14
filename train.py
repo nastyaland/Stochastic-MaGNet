@@ -11,7 +11,7 @@ import optuna
 
 
 # ── Change this to 'Magnetv1', 'Magnetv2', or 'Magnetv3' ──
-MODEL_VERSION = 'Magnetv1'
+MODEL_VERSION = 'Magnetv3'
 MaGNet = importlib.import_module(MODEL_VERSION).MaGNet
 print(f"Using model: {MODEL_VERSION}")
 
@@ -258,10 +258,10 @@ if __name__ == "__main__":
     num_F2DAttn = 1  # number of Feature-wise 2D Spatiotemporal Attention
     num_S2DAttn = 1  # number of  Stock-wise 2D Spatiotemporal Attention
     num_TCH = 2  # number of TCH
-    TopK = 128  # TopK sparsification in TCH
-    M1 = 128  # number of hyperedges in TCH
+    TopK = 64  # TopK sparsification in TCH
+    M1 = 32  # number of hyperedges in TCH
     num_GPH = 1  # number of GPH
-    M2 = 64  # number of hyperedges in GPH
+    M2 = 32  # number of hyperedges in GPH
     
     
     SEARCH = False
@@ -303,7 +303,7 @@ if __name__ == "__main__":
     else:
         main(epochs, dim, num_experts, num_heads_mha, num_channels, num_heads_CausalMHA,
              data_path, T, batch_size, num_MAGE, num_F2DAttn, num_TCH, TopK, M1,
-             num_S2DAttn, num_GPH, M2, lr=0.0003978617947883727)
+             num_S2DAttn, num_GPH, M2, lr=0.0002970830321823682)
 
 
 

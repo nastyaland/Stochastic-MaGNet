@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 # CHANGE THIS to 'Magnetv1', 'Magnetv2', or 'Magnetv3' 
 
-MODEL_VERSION = 'Magnetv1'
+MODEL_VERSION = 'Magnetv3'
 MaGNet = importlib.import_module(MODEL_VERSION).MaGNet
 print(f"Using model: {MODEL_VERSION}")
 
@@ -31,11 +31,11 @@ batch_size = 24
 num_MAGE = 1
 num_F2DAttn = 1
 num_TCH = 2
-TopK = 128
-M1 = 128
+TopK = 64
+M1 = 32
 num_S2DAttn = 1
 num_GPH = 1
-M2 = 64
+M2 = 32
 num_mc_runs = 100
 
 # load data
@@ -113,8 +113,8 @@ plt.title("Distribution of Predictive Uncertainty")
 plt.xlabel("Prediction Variance")
 plt.ylabel("Frequency")
 
-plt.show()
 plt.savefig("uncertainty_histogram.png", dpi=300)
+plt.show()
 
 print("Mean uncertainty:", uncertainty.mean().item())
 print("Max uncertainty:", uncertainty.max().item())
