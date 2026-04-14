@@ -21,7 +21,7 @@ cd .\Stochastic-MaGNet
 Install the minimum packages needed for training and backtesting:
 
 ```powershell
-pip install torch transformers torcheval tqdm einops
+pip install torch transformers torcheval tqdm einops optuna
 ```
 
 Optional plotting support:
@@ -38,7 +38,7 @@ Generate the NASDAQ-100 tensor with:
 
 Expected output file:
 
-- `data_collection/my_nas100_2025_data.pt`
+- `new_my_nas100_2025_data.pt`
 
 ## Hyperparameter Search 
 
@@ -65,7 +65,9 @@ python train.py
 MODEL_VERSION = 'Magnetv1'  # or 'Magnetv2' / 'Magnetv3'
 ```
 
-2. Run training:
+2. Set `SEARCH = False` and plug in the best hyperparameters from the search.
+
+3. Run training:
 
 ```powershell
 python train.py
@@ -77,6 +79,18 @@ python train.py
 - `final_model_Magnetv1.pth`
 - `training_history_Magnetv1.pt`
 - `training_history_Magnetv1.png`
+
+## Model Performance (NASDAQ-100)
+
+Best hyperparameters and test-set results at peak validation accuracy:
+
+| Model | T | num_TCH | TopK | M1 | M2 | lr | Val Acc | Test Acc | Test AUROC | Test F1 |
+|-------|---|---------|------|----|----|-----|---------|----------|------------|--------|
+| Magnetv1 | 20 | 2 | 128 | 128 | 64 | 3.98e-4 | 0.5452 | 0.5287 | 0.5006 | 0.6728 |
+| Magnetv2 | 20 | 1 | 64 | 128 | 32 | 2.04e-4 | 0.5401 | 0.5183 | 0.5041 | 0.6703 |
+| Magnetv3 | 20 | 2 | 64 | 32 | 32 | 2.97e-4 | 0.5666 | 0.5029 | 0.5074 | 0.4849 |
+
+**Magnetv1** achieves the best test accuracy and F1, generalising most consistently from validation to test.
 
 ## Optional MC Inference
 
