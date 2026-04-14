@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 # CHANGE THIS to 'Magnetv1', 'Magnetv2', or 'Magnetv3' 
 
-MODEL_VERSION = 'Magnetv2'
+MODEL_VERSION = 'Magnetv1'
 MaGNet = importlib.import_module(MODEL_VERSION).MaGNet
 print(f"Using model: {MODEL_VERSION}")
 
@@ -18,7 +18,7 @@ else:
     device = torch.device("cpu")
 
 # same settings as train.py
-data_path = "my_nas100_2025_data.pt"
+data_path = "new_my_nas100_2025_data.pt"
 weight_path = f"best_model_{MODEL_VERSION}.pth"
 
 dim = 32
@@ -26,16 +26,16 @@ num_experts = 4
 num_heads_mha = 2
 num_channels = 4
 num_heads_CausalMHA = 2
-T = 10
+T = 20
 batch_size = 24
 num_MAGE = 1
 num_F2DAttn = 1
 num_TCH = 2
-TopK = 64
-M1 = 64
+TopK = 128
+M1 = 128
 num_S2DAttn = 1
-num_GPH = 2
-M2 = 32
+num_GPH = 1
+M2 = 64
 num_mc_runs = 100
 
 # load data

@@ -240,7 +240,7 @@ def main(epochs, dim, num_experts, num_heads_mha, num_channels, num_heads_Causal
 
 if __name__ == "__main__":
     # common parameters
-    epochs = 2
+    epochs = 30
     dim = 32 # size of Feature Embedding
     num_experts = 4 # number of experts in MoE in MAGE block
     num_heads_mha = 2 # number of heads in MHA in MAGE block
@@ -251,20 +251,20 @@ if __name__ == "__main__":
 
 
     ### For dataset NASDAQ100:
-    data_path = "my_nas100_2025_data.pt"
-    T = 10  # lookback window size
+    data_path = "new_my_nas100_2025_data.pt"
+    T = 20  # lookback window size
     batch_size = 24
     num_MAGE = 1  # number of MAGE block
     num_F2DAttn = 1  # number of Feature-wise 2D Spatiotemporal Attention
     num_S2DAttn = 1  # number of  Stock-wise 2D Spatiotemporal Attention
     num_TCH = 2  # number of TCH
-    TopK = 64  # TopK sparsification in TCH
-    M1 = 64  # number of hyperedges in TCH
-    num_GPH = 2  # number of GPH
-    M2 = 32  # number of hyperedges in GPH
+    TopK = 128  # TopK sparsification in TCH
+    M1 = 128  # number of hyperedges in TCH
+    num_GPH = 1  # number of GPH
+    M2 = 64  # number of hyperedges in GPH
     
     
-    SEARCH = True
+    SEARCH = False
     N_TRIALS = 15        
     SEARCH_EPOCHS = 1    
  
@@ -278,7 +278,7 @@ if __name__ == "__main__":
                 num_channels=num_channels,
                 num_heads_CausalMHA=num_heads_CausalMHA,
                 data_path=data_path,
-                T=trial.suggest_categorical('T', [10, 20, 30]),
+                T=trial.suggest_categorical('T', [10, 20]),
                 batch_size=batch_size,
                 num_MAGE=trial.suggest_int('num_MAGE', 1, 2),
                 num_F2DAttn=num_F2DAttn,
@@ -294,7 +294,7 @@ if __name__ == "__main__":
             )
  
         study = optuna.create_study(direction='maximize', pruner=optuna.pruners.MedianPruner())
-        study.optimize(objective, n_trials=N_TRIALS)
+        study.optimize(objective, n_trials=N_TRIALS, catch=(torch.cuda.OutOfMemoryError,))
  
         print("\nBest trial:")
         print(f"  val_accuracy: {study.best_value:.4f}")
@@ -303,7 +303,7 @@ if __name__ == "__main__":
     else:
         main(epochs, dim, num_experts, num_heads_mha, num_channels, num_heads_CausalMHA,
              data_path, T, batch_size, num_MAGE, num_F2DAttn, num_TCH, TopK, M1,
-             num_S2DAttn, num_GPH, M2)
+             num_S2DAttn, num_GPH, M2, lr=0.0003978617947883727)
 
 
 
