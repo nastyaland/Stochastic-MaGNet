@@ -484,6 +484,7 @@ def main(args: argparse.Namespace) -> None:
                 initial_capital=args.initial_capital,
                 transaction_cost_rate=args.transaction_cost_rate,
                 risk_free_rate=args.risk_free_rate,
+                rebalance_frequency=args.rebalance_frequency,
             )
             print("\nBest validation config from deterministic validation:", best_config)
         else:
