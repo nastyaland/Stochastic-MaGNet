@@ -1,0 +1,34 @@
+{
+  "data_name": "NASDAQ100",
+  "model_version": "Magnetv1",
+  "prediction_mode": "mc",
+  "num_mc_runs": 20,
+  "deterministic_val": true,
+  "rebalance_frequency": 5,
+  "eval_split": "val_test",
+  "prob_threshold": 0.5,
+  "variance_quantile": 1.0,
+  "variance_weight": 0.0,
+  "market_variance_threshold": null,
+  "best_validation_config": {
+    "p_ratio": 0.5,
+    "q_stop_loss": 0.4,
+    "r_rising_ratio": 1.0
+  },
+  "validation_metrics": null,
+  "evaluation_metrics": {
+    "final_portfolio_value": 1080938.875,
+    "cumulative_return": 0.08093881607055664,
+    "annual_return": 0.0595623254776001,
+    "volatility": 0.15157469846484578,
+    "sharpe_ratio": 0.26100876913026255,
+    "max_drawdown": 0.12235428392887115,
+    "calmar_ratio": 0.4868021309375763,
+    "avg_transaction_cost": 546.4007694390671,
+    "avg_num_trades": 13.8023598820059,
+    "avg_filtered_out": 0.0,
+    "skipped_days_due_to_market_uncertainty": 0.0,
+    "avg_market_variance": 0.001061943525736056
+  },
+  "variance_path": "backtest_outputs/variance_summary_Magnetv1_bayesian_val_test.pt"
+}
