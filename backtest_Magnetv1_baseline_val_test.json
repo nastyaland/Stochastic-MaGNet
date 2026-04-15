@@ -1,0 +1,24 @@
+{
+  "data_name": "NASDAQ100",
+  "model_version": "Magnetv1",
+  "prediction_mode": "deterministic",
+  "rebalance_frequency": 5,
+  "eval_split": "val_test",
+  "best_validation_config": {
+    "p_ratio": 0.5,
+    "q_stop_loss": 0.4,
+    "r_rising_ratio": 1.0
+  },
+  "validation_metrics": null,
+  "evaluation_metrics": {
+    "final_portfolio_value": 1117428.875,
+    "cumulative_return": 0.11742889881134033,
+    "annual_return": 0.08603763580322266,
+    "volatility": 0.1447353637360451,
+    "sharpe_ratio": 0.4562646895589108,
+    "max_drawdown": 0.09813617914915085,
+    "calmar_ratio": 0.8767167925834656,
+    "avg_transaction_cost": 530.1428514328678,
+    "avg_num_trades": 12.76401179941003
+  }
+}
