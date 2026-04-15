@@ -1,14 +1,30 @@
 # Stochastic MaGNet
 
-Optimization study of the MaGNet algorithm from https://github.com/PeilinTime/MaGNet with stochastic extensions based on MC Dropout.
+Optimization study of the MaGNet algorithm from https://github.com/PeilinTime/MaGNet with stochastic extensions. This study showcases how the MaGNet can be
+optimized using Monte Carlo Dropout to improve stock predictions by taking into account the prediction mean and variance. Those
+uncertainty metrics are then used during backtesting to enhance the stock trading strategy.
+
+
+<img src="https://github.com/nastyaland/Stochastic-MaGNet/blob/f2e46da19bf937536f39a5ae1aeaa125cbb47f20/images/Difference_graph.png" width="70%">
 
 ## Model Variants
+Three model variations were analyzed based on the location of the MC Dropout Layers.
+
+<table>
+<tr><th>Model Variations </th><th>Architecture Representation</th></tr>
+<tr><td>
 
 | Version | MC Dropout placement |
 |---------|----------------------|
 | Magnetv1 | After MAGE + before output |
 | Magnetv2 | After F2DAttn + before output |
 | Magnetv3 | After MAGE, after F2DAttn, and before output |
+
+</td><td>
+
+<img src="https://github.com/nastyaland/Stochastic-MaGNet/blob/f2e46da19bf937536f39a5ae1aeaa125cbb47f20/images/MaGNet%20Models.png" width="100%">
+
+</td></tr> </table>
 
 ## Setup
 
@@ -231,3 +247,14 @@ Backtest outputs are written to `backtest_outputs/`:
 - On CPU, Bayesian backtesting can take a long time. Use `--num-mc-runs 20` for faster exploratory runs and `--num-mc-runs 100` for the standard MC setting.
 - In our NASDAQ100 tests, lowering turnover with `--rebalance-frequency 5` produced much better baseline performance than daily rebalancing.
 - Device selection is automatic: CUDA first, then MPS, then CPU.
+
+## Citations 
+- P. Tan, C. Shi, D. Tu, and L. Xie, “Magnet: A mamba
+dual-hypergraph network for stock prediction via
+temporal-causal and global relational learning,” 2025.
+[Online]. Available: https://arxiv.org/abs/2511.00085
+- J. A. Debo and G. Ciresi, “Predicting implicit patterns
+and optimizing market entry and exit decisions in stock
+prices using integrated bayesian cnn-lstm with deep
+q-learning as a meta-labeller,” SSRN, March 2024.
+[Online]. Available: https://ssrn.com/abstract=4794069
